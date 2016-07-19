@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>---</title>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport" />
+<meta charset=utf-8></head>
+<body></body>
+<script>
+(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+var BinaryXHR = require('binary-xhr')
+var toBase64 = require('arraybuffer-base64')
+
+//split the hash.
+
+var parts = window.location.hash.split('#').slice(1)
+var hasHash = /([A-Za-z0-9\/+]{43}=)\.sha256/
+var isUrl = /^https?:\/\//
+
+var APPNAME = 'SWB'
+
+function log (msg) {
+  console.log(APPNAME, msg)
+}
+
+function hash(data, cb) {
+  window.crypto.subtle.digest(
+    {  name: "SHA-256" },
+    new Uint8Array(data)
+  )
+  .then(function(hash){
+    return cb(null, toBase64(new Uint8Array(hash)))
+  })
+  .catch(function(err){
+      cb(err)
+  })
+}
+
+function run (id) {
+  var text = localStorage[APPNAME+'_version_'+id]
+  var buffer = new TextEncoder('utf8').encode(text)
+  hash(buffer, function (err, hash) {
+    if(localStorage.SWB_current !== hash) {
+      //LOCAL STORAGE CORRUPTED
+      alert('localStorage is corrupted')
+    }
+    else {
+      var script = document.createElement('script')
+      script.textContent = text
+      document.head.appendChild(script) //run javascript.
+    }
+  })
+
+}
+
+if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
+  var id = hasHash.exec(parts[0])[1]
+  log('detected secure url:'+ parts[0])
+  //check if we already have this data.
+  if(localStorage[APPNAME+'_version_'+id]) {
+    run(id)
+  } else
+    log('GET:'+parts[0])
+    BinaryXHR(parts[0], function (err, buf) {
+      console.log(err, buf)
+      if(err) {
+        log('did not retrive new version')
+        throw err
+      }
+      hash(buf, function (err, hash_buf) {
+        if(id !== hash_buf) {
+          //ERROR. requested data was corrupt.
+        }
+        else {
+          log('received correct hash:'+id)
+          //returned data is correct. save, then run.
+          localStorage[APPNAME+'_version_'+id] = new TextDecoder('utf8').decode(buf)
+          //reload to run app
+          localStorage[APPNAME+'_current'] = id
+          window.location = '#' + parts.slice(1).join('#')
+          window.location.reload()
+        }
+      })
+    })
+}
+else if(localStorage[APPNAME+'_current']) {
+  run(localStorage[APPNAME+'_current'])
+}
+else {
+  alert('nothing to run')
+}
+
+
+
+},{"arraybuffer-base64":2,"binary-xhr":3}],2:[function(require,module,exports){
+module.exports = function ToBase64(buf) {
+  buf = new Uint8Array(buf)
+  var s = ''
+  for(var i = 0; i < buf.byteLength; i++)
+    s+=String.fromCharCode(buf[i])
+  return btoa(s)
+}
+
+
+},{}],3:[function(require,module,exports){
+var inherits = require('inherits')
+
+module.exports = function(url, cb) {
+  return new BinaryXHR(url, cb)
+}
+
+function BinaryXHR(url, cb) {
+  var self = this
+  var xhr = new XMLHttpRequest()
+  this.xhr = xhr
+  xhr.open("GET", url, true)
+  xhr.responseType = 'arraybuffer'
+  xhr.onreadystatechange = function () {
+    if (self.xhr.readyState === 4) {
+      if (self.xhr.status !== 200) {
+        cb(self.xhr.status, self.xhr.response);
+      } else if (self.xhr.response && self.xhr.response.byteLength > 0) {
+        cb(false, self.xhr.response)
+      } else {
+        if (self.xhr.response && self.xhr.response.byteLength === 0) return cb('response length 0')
+        cb('no response')
+      }
+    }
+  }
+  xhr.send(null)
+}
+
+},{"inherits":4}],4:[function(require,module,exports){
+module.exports = inherits
+
+function inherits (c, p, proto) {
+  proto = proto || {}
+  var e = {}
+  ;[c.prototype, proto].forEach(function (s) {
+    Object.getOwnPropertyNames(s).forEach(function (k) {
+      e[k] = Object.getOwnPropertyDescriptor(s, k)
+    })
+  })
+  c.prototype = Object.create(p.prototype, e)
+  c.super = p
+}
+
+//function Child () {
+//  Child.super.call(this)
+//  console.error([this
+//                ,this.constructor
+//                ,this.constructor === Child
+//                ,this.constructor.super === Parent
+//                ,Object.getPrototypeOf(this) === Child.prototype
+//                ,Object.getPrototypeOf(Object.getPrototypeOf(this))
+//                 === Parent.prototype
+//                ,this instanceof Child
+//                ,this instanceof Parent])
+//}
+//function Parent () {}
+//inherits(Child, Parent)
+//new Child
+
+},{}]},{},[1]);
+</script>
+</html>

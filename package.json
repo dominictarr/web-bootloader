@@ -1,0 +1,21 @@
+{
+  "name": "web-bootloader",
+  "description": "",
+  "version": "0.0.0",
+  "homepage": "https://github.com/dominictarr/web-bootloader",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/dominictarr/web-bootloader.git"
+  },
+  "dependencies": {
+    "arraybuffer-base64": "^1.0.0",
+    "base64-regex": "^1.1.1",
+    "binary-xhr": "0.0.2"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "set -e; for t in test/*.js; do node $t; done"
+  },
+  "author": "'Dominic Tarr' <dominic.tarr@gmail.com> (dominictarr.com)",
+  "license": "MIT"
+}
