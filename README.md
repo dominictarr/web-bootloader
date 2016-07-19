@@ -39,6 +39,8 @@ Else, a the new code is loaded from the url, if the response
 does not have the correct hash, the response is discarded,
 and the previous version is run.
 
+### pseudocode
+
 ``` js
 //secure_url is a url containing a hash.
 //this tells where to get the js bundle,
@@ -67,17 +69,44 @@ else
   usage()
 ```
 
+### user stories
+
+#### invite codes
+
+Alice shares wants to invite Bob to join the p2p revolution.
+she generates an invite code, and creates a link containing the address of a server
+hosting `web-bootloader` a _secure url_ containing the alice's recommended UI version,
+and the invite code. Alice sends this to Bob via a legacy channel (email, twtr, etc)
+
+Bob clicks on that link. his browser first loads the `web-bootloader` script, which
+then loads the secure url, which then uses the invite code to join the network.
+
+Now Bob is cryptographically linked into the network.
+
+#### manual updates
+
+Alice has been hacking on a new feature for her prefered UI client.
+she creates a new js bundle and publishes it as a blob.
+Then she posts a message announcing the new version, containing the link.
+Bob (or anyone else) can then click on that link to load that version as their client.
+
+#### automatic updates
+
+Bob thinks the work Alice is doing is great, but doesn't want to bother manually updating.
+He just _subscribes_ to her updates (for a given app), and his client updates itself.
+
+#### temporary update
+
+Charlie is writing an app similar to Alice's. Alice wants to try it out, but not necessarily
+to use that as her main thing. This means Alice needs to have a option at somepoint when loading
+the app to choose either not to persist the version, or just to run one version.
+
+> as long as it's possible to manage versions, then Alice can select which version she wants to run,
+> and remove versions she no longer wants/needs.
 
 ## License
 
 MIT
-
-
-
-
-
-
-
 
 
 
