@@ -1,14 +1,35 @@
 <!DOCTYPE html>
-<html>
-<head>
+<html manifest="./manifest.appcache"><head>
 <title>---</title>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport" />
 <meta charset=utf-8></head>
 <body></body>
 <script>
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+;(function () {
+
 var BinaryXHR = require('binary-xhr')
 var toBase64 = require('arraybuffer-base64')
+
+var Progress = require('hyperprogress')
+
+var prog = Progress()
+var running = false
+
+window.WebBoot = {
+  scorchedEarth: scorchedEarth,
+  reinitialize: reinitialize,
+  add: add,
+  run: run
+}
+
+function parse (str) {
+  try {
+    return JSON.parse(str)
+  } catch (_) { }
+}
+
+document.body.appendChild(prog)
 
 //split the hash.
 
@@ -17,6 +38,7 @@ var hasHash = /([A-Za-z0-9\/+]{43}=)\.sha256/
 var isUrl = /^https?:\/\//
 
 var APPNAME = 'SWB'
+var match = new RegExp('^'+APPNAME)
 
 function log (msg) {
   console.log(APPNAME, msg)
@@ -35,13 +57,31 @@ function hash(data, cb) {
   })
 }
 
-function run (id) {
+function reinitialize () {
+  for(var k in localStorage) {
+    if(match.test(k))
+      delete localStorage[k]
+  }
+}
+
+//destroy everything
+function scorchedEarth () {
+  for(var k in localStorage) {
+    delete localStorage[k]
+  }
+}
+
+function run (id, cb) {
+  //if we are already running, restart
+  if(running) {
+    //leave a note in local storage, and restart.
+    location.hash = '#run:'+id
+  }
   var text = localStorage[APPNAME+'_version_'+id]
-  var buffer = new TextEncoder('utf8').encode(text)
-  hash(buffer, function (err, hash) {
-    if(localStorage.SWB_current !== hash) {
+  hash(new TextEncoder('utf8').encode(text), function (err, _id) {
+    if(id !== _id) {
       //LOCAL STORAGE CORRUPTED
-      alert('localStorage is corrupted')
+      cb(new Error('localStorage is corrupted'))
     }
     else {
       var script = document.createElement('script')
@@ -52,46 +92,78 @@ function run (id) {
 
 }
 
+function add (secure_url, cb) {
+  if(!(isUrl.test(secure_url) && hasHash.test(secure_url)))
+    return cb(new Error('is not a secure url:'+secure_url))
+  var id = hasHash.exec(parts[0])[1]
+  BinaryXHR(secure_url, function (err, buf) {
+    if(err)
+      return prog.fail(err, 'could not retrive secure url')
+    if(!buf)
+      return prog.fail(new Error('could not retrive:'+secure_url))
+
+    hash(buf, function (err, _id) {
+      if(err)
+        return prog.fail(err, 'hash failed')
+
+      if(id !== _id) {
+        return prog.fail(new Error('secure url is invalid'))
+      }
+      cb(null, _id)
+    })
+  })
+}
+
 if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
   var id = hasHash.exec(parts[0])[1]
-  log('detected secure url:'+ parts[0])
+  prog.next('detected secure url:'+ parts[0])
+  window.location.hash = '#'+parts.slice(1).join('#')
+
+  var current = localStorage[APPNAME+'_current']
+  if(current && current !== id)
+    if(!confirm("this action updates code to:"+id + "\nclick 'cancel' to continue with current version"))
+      return run(current)
+
   //check if we already have this data.
   if(localStorage[APPNAME+'_version_'+id]) {
+    prog.next('loading local version')
     run(id)
-  } else
-    log('GET:'+parts[0])
-    BinaryXHR(parts[0], function (err, buf) {
-      console.log(err, buf)
-      if(err) {
-        log('did not retrive new version')
-        throw err
-      }
-      hash(buf, function (err, hash_buf) {
-        if(id !== hash_buf) {
-          //ERROR. requested data was corrupt.
-        }
-        else {
-          log('received correct hash:'+id)
-          //returned data is correct. save, then run.
-          localStorage[APPNAME+'_version_'+id] = new TextDecoder('utf8').decode(buf)
-          //reload to run app
-          localStorage[APPNAME+'_current'] = id
-          window.location = '#' + parts.slice(1).join('#')
-          window.location.reload()
-        }
-      })
+  } else {
+    prog.next('retriving secure url:'+parts[0])
+    add(parts[0], function (err, id) {
+      if(err) return prog.fail(err)
+
+      prog.next('loading secure javascript')
+      //returned data is correct. save, then run.
+      localStorage[APPNAME+'_version_'+id] = new TextDecoder('utf8').decode(buf)
+      localStorage[APPNAME+'_current'] = id
+
+      var versions = parse(localStorage[APPNAME+'_versions']) || {}
+      versions[Date.now()] = id
+      localStorage[APPNAME+'_versions'] = JSON.stringify(versions)
+
+      window.location = '#' + parts.slice(1).join('#')
+      window.location.reload()
+
     })
+  }
 }
 else if(localStorage[APPNAME+'_current']) {
   run(localStorage[APPNAME+'_current'])
 }
 else {
-  alert('nothing to run')
+  prog.next('no code to run: paste #{secure_url} to a javascript file.')
 }
 
+})();
 
 
-},{"arraybuffer-base64":2,"binary-xhr":3}],2:[function(require,module,exports){
+
+
+
+
+
+},{"arraybuffer-base64":2,"binary-xhr":3,"hyperprogress":4}],2:[function(require,module,exports){
 module.exports = function ToBase64(buf) {
   buf = new Uint8Array(buf)
   var s = ''
@@ -129,7 +201,76 @@ function BinaryXHR(url, cb) {
   xhr.send(null)
 }
 
-},{"inherits":4}],4:[function(require,module,exports){
+},{"inherits":5}],4:[function(require,module,exports){
+
+function create (tag, classname, children) {
+  var el = document.createElement(tag)
+  classname && el.classList.add(classname)
+  children && children.forEach(function (e) {
+    console.log('append', e)
+    el.appendChild(
+      'string' === typeof e ? document.createTextNode(e) : e
+    )
+  })
+  return el
+}
+
+module.exports = function (steps) {
+  var list = create('ul', 'hyperprogress__list')
+  var error = create('pre', 'hyperprogress__error')
+  var liquid = create('div', 'hyperprogress__liquid', ['.'])
+  var bar = create('div', 'hyperprogress__bar', [liquid])
+  liquid.style.width = '0%'
+
+  var n = 0
+
+  var prog = create('div', 'hyperprogress', [
+    steps ? bar : '',
+    list,
+    //only show bar if a number of steps is provided.
+    error
+  ])
+
+  prog.complete = function () {
+    liquid.style.width = '100%'
+    prog.classList.add('hyperprogress--complete')
+  }
+
+  prog.next = function (name) {
+    n = Math.min(n+1, steps)
+    if(list.lastChild)
+      list.lastChild.classList.add('hyperprogress--okay')
+
+    if(name)
+      list.appendChild(create('li', 'hyperprogress__started', [name]))
+
+    liquid.style.width = Math.round((n/steps)*100)+'%'
+
+    if(n === steps)
+      prog.complete()
+  }
+
+  prog.fail = function (err) {
+    prog.classList.add('hyperprogress--failed')
+    list.lastChild.classList.add('hyperprogress--error')
+    if(err && err.stack)
+      error.textContent = err.stack
+  }
+
+  prog.reset = function () {
+    n = 0
+    error.innerHTML = list.innerHTML = ''
+    liquid.style.width = '0%'
+    return prog
+  }
+
+  return prog
+}
+
+
+
+
+},{}],5:[function(require,module,exports){
 module.exports = inherits
 
 function inherits (c, p, proto) {
