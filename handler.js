@@ -11,13 +11,15 @@ module.exports = function (req, res, next) {
     res.end(index)
   else if(req.url == '/manifest.appcache')
     res.end(manifest)
-  else
-    res.writeHead(200)
+  else if(next)
+    next()
+  else res.writeHead(404), res.end('404!')
 }
 
 
 
 if(!module.parent)
-  require('http').createServer(module.exports).listen(4789)
+  require('http').createServer(module.exports).listen(45789)
+
 
 
