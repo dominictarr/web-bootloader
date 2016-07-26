@@ -95,6 +95,7 @@ function run (id, cb) {
 }
 
 function add_buffer (buf, _id, cb) {
+  prog.next('verifying hash:'+_id)
   hash(buf, function (err, id) {
     if(err)
       return prog.fail(err, 'hash failed')
@@ -124,14 +125,14 @@ function add (secure_url, cb) {
     if(!buf)
       return prog.fail(new Error('could not retrive:\n  '+secure_url))
 
-    add_buffer(buf, null, cb)
+    add_buffer(buf, id, cb)
   })
 }
 
 if(parts.length && parts[0] === APPNAME+'_INIT' || !localStorage[APPNAME+'_current']) {
   prog.next('no code to run: paste #{secure_url} to a javascript file.')
   document.body.appendChild(input_file(function (buf) {
-    add_buffer(buf, id, function (err, id) {
+    add_buffer(buf, null, function (err, id) {
       if(err) prog.fail(err)
       else run(id)
     })
@@ -172,6 +173,7 @@ else {
 }
 
 })();
+
 
 
 
