@@ -1,3 +1,5 @@
+;(function () {
+
 var BinaryXHR = require('binary-xhr')
 var toBase64 = require('arraybuffer-base64')
 
@@ -83,12 +85,14 @@ function run (id, cb) {
 }
 
 function add (secure_url, cb) {
-  if(!(isUrl.test(secure_url) && hasHash.test(secure_url))
+  if(!(isUrl.test(secure_url) && hasHash.test(secure_url)))
     return cb(new Error('is not a secure url:'+secure_url))
   var id = hasHash.exec(parts[0])[1]
   BinaryXHR(secure_url, function (err, buf) {
     if(err)
       return prog.fail(err, 'could not retrive secure url')
+    if(!buf)
+      return prog.fail(new Error('could not retrive:\n  '+secure_url))
 
     hash(buf, function (err, _id) {
       if(err)
@@ -105,12 +109,18 @@ function add (secure_url, cb) {
 if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
   var id = hasHash.exec(parts[0])[1]
   prog.next('detected secure url:'+ parts[0])
+  window.location.hash = '#'+parts.slice(1).join('#')
+
+  var current = localStorage[APPNAME+'_current']
+  if(current && current !== id)
+    if(!confirm("this action updates code to:"+id + "\nclick 'cancel' to continue with current version"))
+      return run(current)
 
   //check if we already have this data.
   if(localStorage[APPNAME+'_version_'+id]) {
     prog.next('loading local version')
     run(id)
-  } else
+  } else {
     prog.next('retriving secure url:'+parts[0])
     add(parts[0], function (err, id) {
       if(err) return prog.fail(err)
@@ -128,6 +138,7 @@ if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
       window.location.reload()
 
     })
+  }
 }
 else if(localStorage[APPNAME+'_current']) {
   run(localStorage[APPNAME+'_current'])
@@ -135,4 +146,11 @@ else if(localStorage[APPNAME+'_current']) {
 else {
   prog.next('no code to run: paste #{secure_url} to a javascript file.')
 }
+
+})();
+
+
+
+
+
 
