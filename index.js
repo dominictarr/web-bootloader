@@ -1,8 +1,9 @@
 ;(function () {
+'use strict'
 
 var BinaryXHR = require('binary-xhr')
 var toBase64 = require('arraybuffer-base64')
-
+var input_file = require('hyperfile')
 var Progress = require('hyperprogress')
 
 var prog = Progress()
@@ -67,7 +68,7 @@ function run (id, cb) {
   //if we are already running, restart
   if(running) {
     //leave a note in local storage, and restart.
-    location.hash = '#run:'+id
+    
   }
   var text = localStorage[APPNAME+'_version_'+id]
   hash(new TextEncoder('utf8').encode(text), function (err, _id) {
@@ -77,6 +78,7 @@ function run (id, cb) {
     }
     else {
       var script = document.createElement('script')
+      running = true
       script.textContent = text
       document.head.appendChild(script) //run javascript.
     }
@@ -84,26 +86,48 @@ function run (id, cb) {
 
 }
 
+function add_buffer (buf, _id, cb) {
+  hash(buf, function (err, id) {
+    if(err)
+      return prog.fail(err, 'hash failed')
+
+    if(_id && _id !== id)
+      return prog.fail(new Error('secure url is invalid'))
+
+    localStorage[APPNAME+'_version_'+id] = new TextDecoder('utf8').decode(buf)
+    localStorage[APPNAME+'_current'] = id
+
+    var versions = parse(localStorage[APPNAME+'_versions']) || {}
+    versions[Date.now()] = id
+    localStorage[APPNAME+'_versions'] = JSON.stringify(versions)
+
+    cb(null, id)
+  })
+
+}
+
 function add (secure_url, cb) {
   if(!(isUrl.test(secure_url) && hasHash.test(secure_url)))
     return cb(new Error('is not a secure url:'+secure_url))
-  var id = hasHash.exec(parts[0])[1]
+  var id = hasHash.exec(secure_url)[1]
   BinaryXHR(secure_url, function (err, buf) {
     if(err)
       return prog.fail(err, 'could not retrive secure url')
     if(!buf)
       return prog.fail(new Error('could not retrive:\n  '+secure_url))
 
-    hash(buf, function (err, _id) {
-      if(err)
-        return prog.fail(err, 'hash failed')
-
-      if(id !== _id) {
-        return prog.fail(new Error('secure url is invalid'))
-      }
-      cb(null, _id)
-    })
+    add_buffer(buf, null, cb)
   })
+}
+
+if(parts.length && parts[0] === APPNAME+'_INIT' || !localStorage[APPNAME+'_current']) {
+  prog.next('no code to run: paste #{secure_url} to a javascript file.')
+  document.body.appendChild(input_file(function (buf) {
+    add_buffer(buf, id, function (err, id) {
+      if(err) prog.fail(err)
+      else run(id)
+    })
+  }))
 }
 
 if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
@@ -127,15 +151,7 @@ if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
 
       prog.next('loading secure javascript')
       //returned data is correct. save, then run.
-      localStorage[APPNAME+'_version_'+id] = new TextDecoder('utf8').decode(buf)
-      localStorage[APPNAME+'_current'] = id
-
-      var versions = parse(localStorage[APPNAME+'_versions']) || {}
-      versions[Date.now()] = id
-      localStorage[APPNAME+'_versions'] = JSON.stringify(versions)
-
-      window.location = '#' + parts.slice(1).join('#')
-      window.location.reload()
+      run(id)
 
     })
   }
