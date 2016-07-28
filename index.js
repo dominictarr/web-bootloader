@@ -13,7 +13,8 @@ window.WebBoot = {
   scorchedEarth: scorchedEarth,
   reinitialize: reinitialize,
   add: add,
-  run: run
+  run: run,
+  version: require('./package.json').version
 }
 
 function parse (str) {
@@ -121,8 +122,56 @@ function add (secure_url, cb) {
   })
 }
 
+function h (tag, content) {
+  var el = document.createElement(tag)
+  if(content)
+    content.forEach(function (e) {
+      if(e) el.appendChild('string' == typeof e ? document.createTextNode(e) : e)
+    })
+  return el
+}
+
+function btn (label, action) {
+  var b = document.createElement('button')
+  b.textContent = label
+  b.onclick = action
+  return b
+}
+
+//display some UI about current versions loaded.
+//optionally load a new script from a file.
 if(parts.length && parts[0] === APPNAME+'_INIT' || !localStorage[APPNAME+'_current']) {
   prog.next('no code to run: paste #{secure_url} to a javascript file.')
+
+  var obj = parse(localStorage[APPNAME+'_versions'])
+  var versions = []
+  for(var ts in obj) versions.push({ts: ts, hash: obj[ts]})
+
+  document.body.appendChild(
+    h('div', [
+      h('h2', ['current versions']),
+      h('ul', versions.map(function (op) {
+        var el = h('li', [
+          op.hash, ' ',
+          new Date(+op.ts).toISOString(),
+          localStorage[APPNAME+'_current'] === op.hash ? '*' : '',
+          btn('delete', function () {
+            delete localStorage[APPNAME+'_version_'+op.hash]
+            delete obj[op.ts]
+            localStorage[APPNAME+'_versions'] = JSON.stringify(obj)
+            el.remove()
+          }),
+          btn('run', function () {
+            localStorage[APPNAME+'_current'] = op.hash
+            location.hash = ''
+            run(op.hash)
+          })
+        ])
+        return el
+      }))
+    ])
+  )
+
   document.body.appendChild(input_file(function (buf) {
     add_buffer(buf, null, function (err, id) {
       if(err) prog.fail(err)
@@ -131,20 +180,25 @@ if(parts.length && parts[0] === APPNAME+'_INIT' || !localStorage[APPNAME+'_curre
   }))
 }
 
-if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
+else if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
   var id = hasHash.exec(parts[0])[1]
+  var _hash = '#'+parts.slice(1).join('#')
+
+  function _run (id) {
+    window.location.hash = _hash; run(id)
+  }
+
   prog.next('detected secure url:'+ parts[0])
-  window.location.hash = '#'+parts.slice(1).join('#')
 
   var current = localStorage[APPNAME+'_current']
   if(current && current !== id)
     if(!confirm("this action updates code to:"+id + "\nclick 'cancel' to continue with current version"))
-      return run(current)
+      return _run(current)
 
   //check if we already have this data.
   if(localStorage[APPNAME+'_version_'+id]) {
     prog.next('loading local version')
-    run(id)
+    _run(id)
   } else {
     prog.next('retriving secure url:'+parts[0])
     add(parts[0], function (err, id) {
@@ -152,7 +206,7 @@ if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
 
       prog.next('loading secure javascript')
       //returned data is correct. save, then run.
-      run(id)
+      _run(id)
 
     })
   }
@@ -165,9 +219,6 @@ else {
 }
 
 })();
-
-
-
 
 
 
