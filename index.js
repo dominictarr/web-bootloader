@@ -8,7 +8,7 @@ var Progress = require('hyperprogress')
 
 var prog = Progress()
 var running = false
-QUOTA = 5*1024*1024
+var QUOTA = 5*1024*1024
 
 var obj = parse(localStorage[APPNAME+'_versions'])
 var versions = [], total = 0
