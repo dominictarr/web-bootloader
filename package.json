@@ -11,7 +11,7 @@
     "arraybuffer-base64": "^1.0.0",
     "binary-xhr": "0.0.2",
     "hyperfile": "^1.1.1",
-    "hyperprogress": "^0.1.0"
+    "hyperprogress": "^0.1.1"
   },
   "devDependencies": {
     "browserify": "^13.0.1",
