@@ -8,13 +8,41 @@ var Progress = require('hyperprogress')
 
 var prog = Progress()
 var running = false
+QUOTA = 5*1024*1024
+
+var obj = parse(localStorage[APPNAME+'_versions'])
+var versions = [], total = 0
+for(var ts in obj) {
+  var data = localStorage[APPNAME+'_version_'+obj[ts]]
+  var size = data && data.length || 0
+  total += size
+  if(!data) delete obj[ts]
+  else versions.push({
+    ts: ts, hash: obj[ts], size: size
+  })
+}
 
 window.WebBoot = {
   scorchedEarth: scorchedEarth,
   reinitialize: reinitialize,
   add: add,
   run: run,
-  version: require('./package.json').version
+  version: require('./package.json').version,
+  current: function () {
+    return localStorage[APPNAME+'_current']
+  },
+  remove: function (id) {
+    var data = localStorage[APPNAME+'_version_'+op.hash]
+    delete localStorage[APPNAME+'_version_'+op.hash]
+    total -= data.length
+    for(var ts in obj)
+      if(obj[ts] === id) delete obj[ts]
+
+    localStorage[APPNAME+'_versions'] = JSON.stringify(obj)
+  },
+  has: function (id) {
+    return localStorage[APPNAME+'_version_'+id]
+  }
 }
 
 function parse (str) {
@@ -24,6 +52,13 @@ function parse (str) {
 }
 
 document.body.appendChild(prog)
+
+function nice_error(err, msg) {
+  if(err.name && err.message && err.stack)
+    return err
+  if('object' !== typeof err)
+    return new Error(msg+JSON.stringify(err))
+}
 
 //split the hash.
 
@@ -114,9 +149,17 @@ function add (secure_url, cb) {
   var id = hasHash.exec(secure_url)[1]
   BinaryXHR(secure_url, function (err, buf) {
     if(err)
-      return prog.fail(err, 'could not retrive secure url')
+      return prog.fail(nice_error(err, 'http error:'), 'could not retrive secure url')
     if(!buf)
       return prog.fail(new Error('could not retrive:\n  '+secure_url))
+
+    if(total + buf.byteLength > QUOTA) {
+      if(confirm('updating to:'+id + '\n will go over localStorage quota.\n delete old versions?')) {
+        for(var i = 0; i < versions.length && total > QUOTA; i++) {
+          
+        }
+      }
+    }
 
     add_buffer(buf, id, cb)
   })
@@ -138,37 +181,44 @@ function btn (label, action) {
   return b
 }
 
+function kb (bytes) {
+  return (Math.round((bytes / 1024) * 100)/100) + 'k'
+}
+
 //display some UI about current versions loaded.
 //optionally load a new script from a file.
-if(parts.length && parts[0] === APPNAME+'_INIT' || !localStorage[APPNAME+'_current']) {
+if(parts.length && parts[0] === APPNAME+'_INIT') {
   prog.next('no code to run: paste #{secure_url} to a javascript file.')
-
-  var obj = parse(localStorage[APPNAME+'_versions'])
-  var versions = []
-  for(var ts in obj) versions.push({ts: ts, hash: obj[ts]})
 
   document.body.appendChild(
     h('div', [
       h('h2', ['current versions']),
       h('ul', versions.map(function (op) {
         var el = h('li', [
-          op.hash, ' ',
-          new Date(+op.ts).toISOString(),
-          localStorage[APPNAME+'_current'] === op.hash ? '*' : '',
-          btn('delete', function () {
-            delete localStorage[APPNAME+'_version_'+op.hash]
-            delete obj[op.ts]
-            localStorage[APPNAME+'_versions'] = JSON.stringify(obj)
-            el.remove()
-          }),
-          btn('run', function () {
-            localStorage[APPNAME+'_current'] = op.hash
-            location.hash = ''
-            run(op.hash)
-          })
+          h('div', [
+            'hash:'+op.hash,
+            ' ',
+            'loaded:'+new Date(+op.ts).toISOString(),
+            ' ',
+            localStorage[APPNAME+'_current'] === op.hash ? '(current)' : '',
+            ' ',
+            'size:'+kb(op.size),
+            h('div', [
+              btn('delete', function () {
+                WebBoot.remove(op.hash)
+                el.remove()
+              }),
+              btn('run', function () {
+                localStorage[APPNAME+'_current'] = op.hash
+                location.hash = ''
+                run(op.hash)
+              })
+            ])
+          ])
         ])
         return el
-      }))
+      })),
+      "Total Size:", kb(total)
     ])
   )
 
@@ -190,13 +240,12 @@ else if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
 
   prog.next('detected secure url:'+ parts[0])
 
-  var current = localStorage[APPNAME+'_current']
-  if(current && current !== id)
+  if(WebBoot.current() && WebBoot.current() !== id)
     if(!confirm("this action updates code to:"+id + "\nclick 'cancel' to continue with current version"))
       return _run(current)
 
   //check if we already have this data.
-  if(localStorage[APPNAME+'_version_'+id]) {
+  if(WebBoot.has(id)) {
     prog.next('loading local version')
     _run(id)
   } else {
@@ -211,15 +260,12 @@ else if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
     })
   }
 }
-else if(localStorage[APPNAME+'_current']) {
-  run(localStorage[APPNAME+'_current'])
-}
+else if(WebBoot.current())
+  run(WebBoot.current())
 else {
   prog.next('no code to run: paste #{secure_url} to a javascript file.')
+  console.log(parts, isUrl.test(parts[0]), hasHash.test(parts[0]))
 }
 
 })();
-
-
-
 
