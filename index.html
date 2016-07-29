@@ -93,7 +93,7 @@ var Progress = require('hyperprogress')
 
 var prog = Progress()
 var running = false
-QUOTA = 5*1024*1024
+var QUOTA = 5*1024*1024
 
 var obj = parse(localStorage[APPNAME+'_versions'])
 var versions = [], total = 0
@@ -2754,7 +2754,7 @@ module.exports = Array.isArray || function (arr) {
 module.exports={
   "name": "web-bootloader",
   "description": "",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "homepage": "https://github.com/dominictarr/web-bootloader",
   "repository": {
     "type": "git",
@@ -2772,7 +2772,8 @@ module.exports={
   },
   "scripts": {
     "test": "set -e; for t in test/*.js; do node $t; done",
-    "build": "browserify index.js | indexhtmlify --appcache > index.html && node handler/cache.js > manifest.appcache"
+    "build": "browserify index.js | indexhtmlify --appcache > index.html && node handler/cache.js > manifest.appcache",
+    "gh-pages": "git checkout master && git branch -D gh-pages ; git checkout -b gh-pages && git push origin gh-pages; git checkout master"
   },
   "author": "'Dominic Tarr' <dominic.tarr@gmail.com> (dominictarr.com)",
   "license": "MIT"
