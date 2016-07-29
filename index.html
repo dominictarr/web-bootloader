@@ -6,6 +6,83 @@
 <body></body>
 <script>
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+
+function create (tag, classname, children) {
+  var el = document.createElement(tag)
+  classname && el.classList.add(classname)
+  children && children.forEach(function (e) {
+    el.appendChild(
+      'string' === typeof e ? document.createTextNode(e) : e
+    )
+  })
+  return el
+}
+
+module.exports = function (steps) {
+  var list = create('ul', 'hyperprogress__list')
+  var error = create('pre', 'hyperprogress__error')
+  var liquid = create('div', 'hyperprogress__liquid', ['.'])
+  var bar = create('div', 'hyperprogress__bar', [liquid])
+  liquid.style.width = '0%'
+
+  var n = 0
+
+  var prog = create('div', 'hyperprogress', [
+    steps ? bar : '',
+    list,
+    //only show bar if a number of steps is provided.
+    error
+  ])
+
+  prog.complete = function () {
+    liquid.style.width = '100%'
+    prog.classList.add('hyperprogress--complete')
+  }
+
+  prog.next = function (name) {
+    n = Math.min(n+1, steps)
+    if(list.lastChild)
+      list.lastChild.classList.add('hyperprogress--okay')
+
+    if(name)
+      list.appendChild(create('li', 'hyperprogress__started', [name]))
+
+    liquid.style.width = Math.round((n/steps)*100)+'%'
+
+    if(n === steps)
+      prog.complete()
+  }
+
+  prog.fail = function (err) {
+    prog.classList.add('hyperprogress--failed')
+    list.lastChild.classList.add('hyperprogress--error')
+    console.log(err)
+    if(err && err.stack && err.name) {
+      if(err.stack.indexOf(err.name) == 0) //chrome, node
+        error.textContent = err.stack
+      else //firefox
+        error.textContent = err.name+': '+err.message + '\n' + err.stack
+    }
+    else if(err && err.name && err.message)
+      error.textContent = err.name + ': ' + err.message
+    else
+      error.textContent = JSON.stringify(err)
+  }
+
+  prog.reset = function () {
+    n = 0
+    error.innerHTML = list.innerHTML = ''
+    liquid.style.width = '0%'
+    return prog
+  }
+
+  return prog
+}
+
+
+
+
+},{}],2:[function(require,module,exports){
 ;(function () {
 'use strict'
 
@@ -16,12 +93,41 @@ var Progress = require('hyperprogress')
 
 var prog = Progress()
 var running = false
+QUOTA = 5*1024*1024
+
+var obj = parse(localStorage[APPNAME+'_versions'])
+var versions = [], total = 0
+for(var ts in obj) {
+  var data = localStorage[APPNAME+'_version_'+obj[ts]]
+  var size = data && data.length || 0
+  total += size
+  if(!data) delete obj[ts]
+  else versions.push({
+    ts: ts, hash: obj[ts], size: size
+  })
+}
 
 window.WebBoot = {
   scorchedEarth: scorchedEarth,
   reinitialize: reinitialize,
   add: add,
-  run: run
+  run: run,
+  version: require('./package.json').version,
+  current: function () {
+    return localStorage[APPNAME+'_current']
+  },
+  remove: function (id) {
+    var data = localStorage[APPNAME+'_version_'+op.hash]
+    delete localStorage[APPNAME+'_version_'+op.hash]
+    total -= data.length
+    for(var ts in obj)
+      if(obj[ts] === id) delete obj[ts]
+
+    localStorage[APPNAME+'_versions'] = JSON.stringify(obj)
+  },
+  has: function (id) {
+    return localStorage[APPNAME+'_version_'+id]
+  }
 }
 
 function parse (str) {
@@ -31,6 +137,13 @@ function parse (str) {
 }
 
 document.body.appendChild(prog)
+
+function nice_error(err, msg) {
+  if(err.name && err.message && err.stack)
+    return err
+  if('object' !== typeof err)
+    return new Error(msg+JSON.stringify(err))
+}
 
 //split the hash.
 
@@ -121,16 +234,79 @@ function add (secure_url, cb) {
   var id = hasHash.exec(secure_url)[1]
   BinaryXHR(secure_url, function (err, buf) {
     if(err)
-      return prog.fail(err, 'could not retrive secure url')
+      return prog.fail(nice_error(err, 'http error:'), 'could not retrive secure url')
     if(!buf)
       return prog.fail(new Error('could not retrive:\n  '+secure_url))
+
+    if(total + buf.byteLength > QUOTA) {
+      if(confirm('updating to:'+id + '\n will go over localStorage quota.\n delete old versions?')) {
+        for(var i = 0; i < versions.length && total > QUOTA; i++) {
+          
+        }
+      }
+    }
 
     add_buffer(buf, id, cb)
   })
 }
 
-if(parts.length && parts[0] === APPNAME+'_INIT' || !localStorage[APPNAME+'_current']) {
+function h (tag, content) {
+  var el = document.createElement(tag)
+  if(content)
+    content.forEach(function (e) {
+      if(e) el.appendChild('string' == typeof e ? document.createTextNode(e) : e)
+    })
+  return el
+}
+
+function btn (label, action) {
+  var b = document.createElement('button')
+  b.textContent = label
+  b.onclick = action
+  return b
+}
+
+function kb (bytes) {
+  return (Math.round((bytes / 1024) * 100)/100) + 'k'
+}
+
+//display some UI about current versions loaded.
+//optionally load a new script from a file.
+if(parts.length && parts[0] === APPNAME+'_INIT') {
   prog.next('no code to run: paste #{secure_url} to a javascript file.')
+
+  document.body.appendChild(
+    h('div', [
+      h('h2', ['current versions']),
+      h('ul', versions.map(function (op) {
+        var el = h('li', [
+          h('div', [
+            'hash:'+op.hash,
+            ' ',
+            'loaded:'+new Date(+op.ts).toISOString(),
+            ' ',
+            localStorage[APPNAME+'_current'] === op.hash ? '(current)' : '',
+            ' ',
+            'size:'+kb(op.size),
+            h('div', [
+              btn('delete', function () {
+                WebBoot.remove(op.hash)
+                el.remove()
+              }),
+              btn('run', function () {
+                localStorage[APPNAME+'_current'] = op.hash
+                location.hash = ''
+                run(op.hash)
+              })
+            ])
+          ])
+        ])
+        return el
+      })),
+      "Total Size:", kb(total)
+    ])
+  )
+
   document.body.appendChild(input_file(function (buf) {
     add_buffer(buf, null, function (err, id) {
       if(err) prog.fail(err)
@@ -139,20 +315,24 @@ if(parts.length && parts[0] === APPNAME+'_INIT' || !localStorage[APPNAME+'_curre
   }))
 }
 
-if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
+else if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
   var id = hasHash.exec(parts[0])[1]
-  prog.next('detected secure url:'+ parts[0])
-  window.location.hash = '#'+parts.slice(1).join('#')
+  var _hash = '#'+parts.slice(1).join('#')
 
-  var current = localStorage[APPNAME+'_current']
-  if(current && current !== id)
+  function _run (id) {
+    window.location.hash = _hash; run(id)
+  }
+
+  prog.next('detected secure url:'+ parts[0])
+
+  if(WebBoot.current() && WebBoot.current() !== id)
     if(!confirm("this action updates code to:"+id + "\nclick 'cancel' to continue with current version"))
-      return run(current)
+      return _run(current)
 
   //check if we already have this data.
-  if(localStorage[APPNAME+'_version_'+id]) {
+  if(WebBoot.has(id)) {
     prog.next('loading local version')
-    run(id)
+    _run(id)
   } else {
     prog.next('retriving secure url:'+parts[0])
     add(parts[0], function (err, id) {
@@ -160,28 +340,22 @@ if(parts.length && isUrl.test(parts[0]) && hasHash.test(parts[0])) {
 
       prog.next('loading secure javascript')
       //returned data is correct. save, then run.
-      run(id)
+      _run(id)
 
     })
   }
 }
-else if(localStorage[APPNAME+'_current']) {
-  run(localStorage[APPNAME+'_current'])
-}
+else if(WebBoot.current())
+  run(WebBoot.current())
 else {
   prog.next('no code to run: paste #{secure_url} to a javascript file.')
+  console.log(parts, isUrl.test(parts[0]), hasHash.test(parts[0]))
 }
 
 })();
 
 
-
-
-
-
-
-
-},{"arraybuffer-base64":2,"binary-xhr":4,"hyperfile":9,"hyperprogress":10}],2:[function(require,module,exports){
+},{"./package.json":16,"arraybuffer-base64":3,"binary-xhr":5,"hyperfile":10,"hyperprogress":1}],3:[function(require,module,exports){
 module.exports = function ToBase64(buf) {
   buf = new Uint8Array(buf)
   var s = ''
@@ -191,7 +365,7 @@ module.exports = function ToBase64(buf) {
 }
 
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 'use strict'
 
 exports.toByteArray = toByteArray
@@ -302,7 +476,7 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 var inherits = require('inherits')
 
 module.exports = function(url, cb) {
@@ -331,9 +505,9 @@ function BinaryXHR(url, cb) {
   xhr.send(null)
 }
 
-},{"inherits":14}],5:[function(require,module,exports){
+},{"inherits":14}],6:[function(require,module,exports){
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 /*!
  * Cross-Browser Split 1.1.1
  * Copyright 2007-2012 Steven Levithan <stevenlevithan.com>
@@ -441,7 +615,7 @@ module.exports = (function split(undef) {
   return self;
 })();
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 (function (global){
 /*!
  * The buffer module from node.js, for the browser.
@@ -2156,7 +2330,7 @@ function isnan (val) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"base64-js":3,"ieee754":12,"isarray":15}],8:[function(require,module,exports){
+},{"base64-js":4,"ieee754":12,"isarray":15}],9:[function(require,module,exports){
 // contains, add, remove, toggle
 var indexof = require('indexof')
 
@@ -2257,7 +2431,7 @@ function isTruthy(value) {
     return !!value
 }
 
-},{"indexof":13}],9:[function(require,module,exports){
+},{"indexof":13}],10:[function(require,module,exports){
 (function (Buffer){
 var h = require('hyperscript')
 
@@ -2290,76 +2464,7 @@ module.exports.asDataURL = function (onFile) {
 
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":7,"hyperscript":11}],10:[function(require,module,exports){
-
-function create (tag, classname, children) {
-  var el = document.createElement(tag)
-  classname && el.classList.add(classname)
-  children && children.forEach(function (e) {
-    console.log('append', e)
-    el.appendChild(
-      'string' === typeof e ? document.createTextNode(e) : e
-    )
-  })
-  return el
-}
-
-module.exports = function (steps) {
-  var list = create('ul', 'hyperprogress__list')
-  var error = create('pre', 'hyperprogress__error')
-  var liquid = create('div', 'hyperprogress__liquid', ['.'])
-  var bar = create('div', 'hyperprogress__bar', [liquid])
-  liquid.style.width = '0%'
-
-  var n = 0
-
-  var prog = create('div', 'hyperprogress', [
-    steps ? bar : '',
-    list,
-    //only show bar if a number of steps is provided.
-    error
-  ])
-
-  prog.complete = function () {
-    liquid.style.width = '100%'
-    prog.classList.add('hyperprogress--complete')
-  }
-
-  prog.next = function (name) {
-    n = Math.min(n+1, steps)
-    if(list.lastChild)
-      list.lastChild.classList.add('hyperprogress--okay')
-
-    if(name)
-      list.appendChild(create('li', 'hyperprogress__started', [name]))
-
-    liquid.style.width = Math.round((n/steps)*100)+'%'
-
-    if(n === steps)
-      prog.complete()
-  }
-
-  prog.fail = function (err) {
-    prog.classList.add('hyperprogress--failed')
-    list.lastChild.classList.add('hyperprogress--error')
-    if(err && err.stack)
-      error.textContent = err.stack
-  }
-
-  prog.reset = function () {
-    n = 0
-    error.innerHTML = list.innerHTML = ''
-    liquid.style.width = '0%'
-    return prog
-  }
-
-  return prog
-}
-
-
-
-
-},{}],11:[function(require,module,exports){
+},{"buffer":8,"hyperscript":11}],11:[function(require,module,exports){
 var split = require('browser-split')
 var ClassList = require('class-list')
 require('html-element')
@@ -2510,7 +2615,7 @@ function isArray (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]'
 }
 
-},{"browser-split":6,"class-list":8,"html-element":5}],12:[function(require,module,exports){
+},{"browser-split":7,"class-list":9,"html-element":6}],12:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -2645,6 +2750,34 @@ module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}]},{},[1]);
+},{}],16:[function(require,module,exports){
+module.exports={
+  "name": "web-bootloader",
+  "description": "",
+  "version": "0.1.2",
+  "homepage": "https://github.com/dominictarr/web-bootloader",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/dominictarr/web-bootloader.git"
+  },
+  "dependencies": {
+    "arraybuffer-base64": "^1.0.0",
+    "binary-xhr": "0.0.2",
+    "hyperfile": "^1.1.1",
+    "hyperprogress": "^0.1.1"
+  },
+  "devDependencies": {
+    "browserify": "^13.0.1",
+    "indexhtmlify": "^1.3.0"
+  },
+  "scripts": {
+    "test": "set -e; for t in test/*.js; do node $t; done",
+    "build": "browserify index.js | indexhtmlify --appcache > index.html"
+  },
+  "author": "'Dominic Tarr' <dominic.tarr@gmail.com> (dominictarr.com)",
+  "license": "MIT"
+}
+
+},{}]},{},[2]);
 </script>
 </html>
