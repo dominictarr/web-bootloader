@@ -6,6 +6,15 @@ var toBase64 = require('arraybuffer-base64')
 var input_file = require('hyperfile')
 var Progress = require('hyperprogress')
 
+//split the hash.
+
+var parts = window.location.hash.split('#').slice(1)
+var hasHash = /([A-Za-z0-9\/+]{43}=)\.sha256/
+var isUrl = /^https?:\/\//
+
+var APPNAME = 'SWB'
+var match = new RegExp('^'+APPNAME)
+
 var prog = Progress()
 var running = false
 var QUOTA = 5*1024*1024
@@ -59,15 +68,6 @@ function nice_error(err, msg) {
   if('object' !== typeof err)
     return new Error(msg+JSON.stringify(err))
 }
-
-//split the hash.
-
-var parts = window.location.hash.split('#').slice(1)
-var hasHash = /([A-Za-z0-9\/+]{43}=)\.sha256/
-var isUrl = /^https?:\/\//
-
-var APPNAME = 'SWB'
-var match = new RegExp('^'+APPNAME)
 
 function log (msg) {
   console.log(APPNAME, msg)
@@ -268,4 +268,5 @@ else {
 }
 
 })();
+
 
