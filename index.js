@@ -125,11 +125,14 @@ function run (id, cb) {
 function add_buffer (buf, _id, cb) {
   prog.next('verifying hash:'+_id)
   hash(buf, function (err, id) {
-    if(err)
-      return prog.fail(err, 'hash failed')
-
+    if(err) {
+      prog.fail(err, 'hash failed')
+      document.body.appendChild(
+        btn('retry', function () { location.reload() })
+      )
+    }
     if(_id && _id !== id)
-      return prog.fail(new Error('secure url is invalid'))
+      return prog.fail(new Error('incorrect hash, got:'+id+', expected:'+_id))
 
     localStorage[APPNAME+'_version_'+id] = new TextDecoder('utf8').decode(buf)
     localStorage[APPNAME+'_current'] = id
@@ -268,5 +271,4 @@ else {
 }
 
 })();
-
 
