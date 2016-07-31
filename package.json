@@ -1,7 +1,7 @@
 {
   "name": "web-bootloader",
   "description": "",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "homepage": "https://github.com/dominictarr/web-bootloader",
   "repository": {
     "type": "git",
