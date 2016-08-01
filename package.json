@@ -7,13 +7,11 @@
     "type": "git",
     "url": "git://github.com/dominictarr/web-bootloader.git"
   },
-  "dependencies": {
+  "devDependencies": {
     "arraybuffer-base64": "^1.0.0",
     "binary-xhr": "0.0.2",
     "hyperfile": "^1.1.1",
-    "hyperprogress": "^0.1.1"
-  },
-  "devDependencies": {
+    "hyperprogress": "^0.1.1",
     "browserify": "^13.0.1",
     "indexhtmlify": "^1.3.0"
   },
@@ -25,3 +23,5 @@
   "author": "'Dominic Tarr' <dominic.tarr@gmail.com> (dominictarr.com)",
   "license": "MIT"
 }
+
+
