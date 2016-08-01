@@ -41,8 +41,8 @@ window.WebBoot = {
     return localStorage[APPNAME+'_current']
   },
   remove: function (id) {
-    var data = localStorage[APPNAME+'_version_'+op.hash]
-    delete localStorage[APPNAME+'_version_'+op.hash]
+    var data = localStorage[APPNAME+'_version_'+id]
+    delete localStorage[APPNAME+'_version_'+id]
     total -= data.length
     for(var ts in obj)
       if(obj[ts] === id) delete obj[ts]
