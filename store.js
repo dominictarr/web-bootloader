@@ -1,9 +1,9 @@
 var u = require('./util')
 
-module.exports = function (prefix) {
+module.exports = function (prefix, storage) {
   return {
     get: function (id, cb) {
-      var data = localStorage[prefix+'_versions_'+id]
+      var data = storage[prefix+'_versions_'+id]
       if(data)
         u.hash(data, function (err, _id) {
           if(err) cb(err)
@@ -16,56 +16,65 @@ module.exports = function (prefix) {
     add: function (data, id, cb) {
       if(!cb) cb = id, id = null
       u.hash(data, function (err, _id) {
-        console.log(data, _id)
         if(err) cb(err)
         else if(id && _id !== id) cb(u.HashError(_id, id))
         else {
-          try { localStorage[prefix+'_versions_'+_id] = u.toUtf8(data) }
+          try {
+
+            storage[prefix+'_versions_'+_id] = u.toUtf8(data)
+          }
           catch(err) { return cb(err) } //this will be quota error
-          console.log('SAVE', prefix+'_versions_'+_id, u.toUtf8(data).substring(0, 20))
           cb(null, _id)
         }
       })
     },
 
     has: function (id, cb) {
-      return cb(null, !!localStorage[APPNAME+'_versions_'+id])
+      return cb(null, !!storage[prefix+'_versions_'+id])
     },
 
     rm: function (id, cb) {
-      delete localStorage[prefix+'_versions_'+id]
-      var versions = u.parse(localStorage[prefix+'_versions']) || {}
-      for(var ts in versions)
-        if(versions[ts] === id) delete obj[ts]
-      localStorage[prefix+'_versions'] = JSON.stringify(obj)
+      delete storage[prefix+'_versions_'+id]
+
       cb()
     },
 
 
     ls: function (cb) {
-      var p = prefix + '_versions_'
-      var versions = u.parse(localStorage[prefix+'_versions']) || {}
-      var ary = []
-      for(var ts in versions) {
-        var data = localStorage[p+versions[ts]]
-        var size = data && data.length || 0
-        if(!data) delete versions[ts]
-        else ary.push({
-          id: versions[ts], size: size, ts: ts
-        })
+      var match = new RegExp('^'+prefix+'_versions_'), ary = []
+      for(var key in storage) {
+        if(match.test(key)) {
+          var data = storage[key]
+          ary.push({
+            id: key.replace(match, ''),
+            size: data && data.length || 0
+          })
+        }
       }
       cb(null, ary)
     },
 
     destroy: function (cb) {
-      var versions = u.parse(localStorage[prefix+'_versions']) || {}
-      for(var ts in versions)
-        delete localStorage[p+versions[ts]]
-      delete localStorage[prefix+'_versions']
+      var match = new RegExp('^'+prefix+'_versions_')
+      for(var key in storage) {
+        if(match.test(key)) {
+          delete storage[key]
+        }
+      }
+
       cb()
     }
   }
 }
+
+
+
+
+
+
+
+
+
 
 
 

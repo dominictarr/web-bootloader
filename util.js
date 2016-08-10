@@ -1,6 +1,11 @@
+//attempt to load node version.
+u = require('./_util')
+if(u.parse) return module.exports = u, console.log("loaded node version for testing")
+
 var decoder = new TextDecoder('utf8')
 var encoder = new TextEncoder('utf8')
 var u = exports
+
 u.toUtf8 = function (data) {
   return 'string' == typeof data ? data : decoder.decode(data)
 }
@@ -35,6 +40,11 @@ u.parse = function (str) {
 u.HashError = function (_id, id) {
   return new Error('incorrect hash:'+_id+'\n expected:'+id)
 }
+
+
+
+
+
 
 
 

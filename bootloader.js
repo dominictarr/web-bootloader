@@ -91,6 +91,51 @@ module.exports = function (prefix, store, log) {
           })
       }
     },
+    size: function (cb) {
+      store.ls(function (err, ls) {
+        if(err) cb(err)
+        else cb(null, ls.reduce(function (total, item) {
+          return total + item.size
+        }, 0))
+      })
+    },
+    //clear target amount of space.
+    prune: function (target, cb) {
+      if(!target) return cb(new Error('WebBoot.prune: size to clear must be provided'))
+      var cleared = 0, remove = []
+      
+      function clear () {
+        var n = remove.length
+        while(remove.length) store.rm(remove.shift(), function () {
+          if(--n) return
+          if(cleared < target)
+            cb(new Error('could not clear requested space'), cleared)
+          else
+            cb(null, cleared)
+        })
+      }
+
+      store.ls(function (err, ls) {
+        if(err) return cb(err)
+        log.unfiltered(function (err, unfiltered) {
+          var stored = unfiltered.reverse()
+          for(var i = 0; i < stored.length; i++) {
+            var id = stored[i].value
+            var item = ls.find(function (e) {
+              return e.id === id
+            })
+            
+            if(item) {
+              cleared += item.size
+              remove.push(id)
+              if(cleared >= target) return clear()
+            }
+          }
+          clear()
+        })
+      })
+    },
+
     version: require('./package.json').version,
     remove: store.rm,
     has: store.has,
@@ -102,7 +147,5 @@ module.exports = function (prefix, store, log) {
     onprogress: null
   }
 }
-
-
 
 

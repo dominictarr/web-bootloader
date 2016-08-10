@@ -1,7 +1,9 @@
 var h = require('hscrpt')
 var input_file = require('hyperfile')
 var Progress = require('hyperprogress')
+var u = require('./util')
 var prog = Progress()
+
 //split the hash.
 var parts = window.location.hash.split('#').slice(1)
 var QUOTA = 5*1024*1024
@@ -28,6 +30,28 @@ module.exports = function (appname, wb) {
 
 //  var isElectron = typeof process !== 'undefined'
 //      && process.env && process.env[appname+'_INIT']
+
+  function handleQuota(err, data, id) {
+    if(err
+      && err.name == "QuotaExceededError"
+      && confirm ('adding: '+id+' exceedes quota, clear cache?')
+    ) {
+      wb.prune(data.length, function (err) {
+        if(err) throw prog.fail(err)
+        wb.add(data, id, function (err) {
+          if(err) throw prog.fail(err)
+          wb.run(id, function (err) {
+            if(err) throw prog.fail(err)
+          })
+        })
+      })
+    }
+    else if(!err) wb.run(id, function (err) {
+        if(err) throw prog.fail(err)
+      })
+    else
+      throw prog.fail(err)
+  }
 
   ;(function redraw () {
     wb.versions(function (err, log) {
@@ -68,21 +92,23 @@ module.exports = function (appname, wb) {
           h('input', {
             placeholder: 'enter secure url',
             onchange: function (ev) {
-              wb.installAndRun(ev.target.value, function (err) {
-                //assume this is a secure url
-                if(err) throw prog.fail(err)
-              })
+              //else, download it. if that succeeds,
+              //add to store, if success, run.
+              //if that fails, offer to clean up, or fail.
+              //add to store, if success, run.
+
+              //this can fail from quota exceeded.
+              //check whether we have this already, if so, run it.
+              var url = ev.target.value
+
+              wb.install(url, handleQuota)
             }
           }),
 
           //or select a local file to run
-          input_file(function (buf) {
-            wb.add(buf, function (err, id) {
-              if(err) throw prog.fail(err)
-              wb.run(id, function (err) {
-                if(err) throw prog.fail(err)
-                //this will not callback if it successfully runs.
-              })
+          input_file(function (data) {
+            wb.add(data, function (err, id) {
+              handleQuota(err, data, id)
             })
           })
         ])
@@ -91,21 +117,6 @@ module.exports = function (appname, wb) {
   })()
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
