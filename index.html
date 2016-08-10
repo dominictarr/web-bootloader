@@ -178,6 +178,51 @@ module.exports = function (prefix, store, log) {
           })
       }
     },
+    size: function (cb) {
+      store.ls(function (err, ls) {
+        if(err) cb(err)
+        else cb(null, ls.reduce(function (total, item) {
+          return total + item.size
+        }, 0))
+      })
+    },
+    //clear target amount of space.
+    prune: function (target, cb) {
+      if(!target) return cb(new Error('WebBoot.prune: size to clear must be provided'))
+      var cleared = 0, remove = []
+      
+      function clear () {
+        var n = remove.length
+        while(remove.length) store.rm(remove.shift(), function () {
+          if(--n) return
+          if(cleared < target)
+            cb(new Error('could not clear requested space'), cleared)
+          else
+            cb(null, cleared)
+        })
+      }
+
+      store.ls(function (err, ls) {
+        if(err) return cb(err)
+        log.unfiltered(function (err, unfiltered) {
+          var stored = unfiltered.reverse()
+          for(var i = 0; i < stored.length; i++) {
+            var id = stored[i].value
+            var item = ls.find(function (e) {
+              return e.id === id
+            })
+            
+            if(item) {
+              cleared += item.size
+              remove.push(id)
+              if(cleared >= target) return clear()
+            }
+          }
+          clear()
+        })
+      })
+    },
+
     version: require('./package.json').version,
     remove: store.rm,
     has: store.has,
@@ -189,8 +234,6 @@ module.exports = function (prefix, store, log) {
     onprogress: null
   }
 }
-
-
 
 
 
@@ -232,8 +275,8 @@ exports.isSecureUrl = function (string) {
 'use strict'
 
 var appname = 'SWB'
-var store = require('./store')(appname)
-var log = require('./log')(appname)
+var store = require('./store')(appname, localStorage)
+var log = require('./log')(appname, localStorage)
 var wb = window.WebBoot = require('./bootloader')(appname, store, log)
 
 //minimal user interface...
@@ -301,6 +344,7 @@ module.exports = function (prefix, storage) {
     }
   }
 }
+
 
 
 },{"./util":23}],6:[function(require,module,exports){
@@ -1472,6 +1516,9 @@ module.exports={
     "indexhtmlify": "^1.3.0",
     "tape": "^4.6.0"
   },
+  "browser": {
+    "./_util": false
+  },
   "scripts": {
     "test": "set -e; for t in test/*.js; do node $t; done",
     "build": "browserify index.js --igv , | indexhtmlify --appcache > index.html && node handler/cache.js > manifest.appcache",
@@ -1485,13 +1532,15 @@ module.exports={
   }
 }
 
+
+
 },{}],21:[function(require,module,exports){
 var u = require('./util')
 
-module.exports = function (prefix) {
+module.exports = function (prefix, storage) {
   return {
     get: function (id, cb) {
-      var data = localStorage[prefix+'_versions_'+id]
+      var data = storage[prefix+'_versions_'+id]
       if(data)
         u.hash(data, function (err, _id) {
           if(err) cb(err)
@@ -1504,52 +1553,52 @@ module.exports = function (prefix) {
     add: function (data, id, cb) {
       if(!cb) cb = id, id = null
       u.hash(data, function (err, _id) {
-        console.log(data, _id)
         if(err) cb(err)
         else if(id && _id !== id) cb(u.HashError(_id, id))
         else {
-          try { localStorage[prefix+'_versions_'+_id] = u.toUtf8(data) }
+          try {
+
+            storage[prefix+'_versions_'+_id] = u.toUtf8(data)
+          }
           catch(err) { return cb(err) } //this will be quota error
-          console.log('SAVE', prefix+'_versions_'+_id, u.toUtf8(data).substring(0, 20))
           cb(null, _id)
         }
       })
     },
 
     has: function (id, cb) {
-      return cb(null, !!localStorage[APPNAME+'_versions_'+id])
+      return cb(null, !!storage[prefix+'_versions_'+id])
     },
 
     rm: function (id, cb) {
-      delete localStorage[prefix+'_versions_'+id]
-      var versions = u.parse(localStorage[prefix+'_versions']) || {}
-      for(var ts in versions)
-        if(versions[ts] === id) delete obj[ts]
-      localStorage[prefix+'_versions'] = JSON.stringify(obj)
+      delete storage[prefix+'_versions_'+id]
+
       cb()
     },
 
 
     ls: function (cb) {
-      var p = prefix + '_versions_'
-      var versions = u.parse(localStorage[prefix+'_versions']) || {}
-      var ary = []
-      for(var ts in versions) {
-        var data = localStorage[p+versions[ts]]
-        var size = data && data.length || 0
-        if(!data) delete versions[ts]
-        else ary.push({
-          id: versions[ts], size: size, ts: ts
-        })
+      var match = new RegExp('^'+prefix+'_versions_'), ary = []
+      for(var key in storage) {
+        if(match.test(key)) {
+          var data = storage[key]
+          ary.push({
+            id: key.replace(match, ''),
+            size: data && data.length || 0
+          })
+        }
       }
       cb(null, ary)
     },
 
     destroy: function (cb) {
-      var versions = u.parse(localStorage[prefix+'_versions']) || {}
-      for(var ts in versions)
-        delete localStorage[p+versions[ts]]
-      delete localStorage[prefix+'_versions']
+      var match = new RegExp('^'+prefix+'_versions_')
+      for(var key in storage) {
+        if(match.test(key)) {
+          delete storage[key]
+        }
+      }
+
       cb()
     }
   }
@@ -1561,11 +1610,22 @@ module.exports = function (prefix) {
 
 
 
+
+
+
+
+
+
+
+
+
 },{"./util":23}],22:[function(require,module,exports){
 var h = require('hscrpt')
 var input_file = require('hyperfile')
 var Progress = require('hyperprogress')
+var u = require('./util')
 var prog = Progress()
+
 //split the hash.
 var parts = window.location.hash.split('#').slice(1)
 var QUOTA = 5*1024*1024
@@ -1592,6 +1652,28 @@ module.exports = function (appname, wb) {
 
 //  var isElectron = typeof process !== 'undefined'
 //      && process.env && process.env[appname+'_INIT']
+
+  function handleQuota(err, data, id) {
+    if(err
+      && err.name == "QuotaExceededError"
+      && confirm ('adding: '+id+' exceedes quota, clear cache?')
+    ) {
+      wb.prune(data.length, function (err) {
+        if(err) throw prog.fail(err)
+        wb.add(data, id, function (err) {
+          if(err) throw prog.fail(err)
+          wb.run(id, function (err) {
+            if(err) throw prog.fail(err)
+          })
+        })
+      })
+    }
+    else if(!err) wb.run(id, function (err) {
+        if(err) throw prog.fail(err)
+      })
+    else
+      throw prog.fail(err)
+  }
 
   ;(function redraw () {
     wb.versions(function (err, log) {
@@ -1632,21 +1714,23 @@ module.exports = function (appname, wb) {
           h('input', {
             placeholder: 'enter secure url',
             onchange: function (ev) {
-              wb.installAndRun(ev.target.value, function (err) {
-                //assume this is a secure url
-                if(err) throw prog.fail(err)
-              })
+              //else, download it. if that succeeds,
+              //add to store, if success, run.
+              //if that fails, offer to clean up, or fail.
+              //add to store, if success, run.
+
+              //this can fail from quota exceeded.
+              //check whether we have this already, if so, run it.
+              var url = ev.target.value
+
+              wb.install(url, handleQuota)
             }
           }),
 
           //or select a local file to run
-          input_file(function (buf) {
-            wb.add(buf, function (err, id) {
-              if(err) throw prog.fail(err)
-              wb.run(id, function (err) {
-                if(err) throw prog.fail(err)
-                //this will not callback if it successfully runs.
-              })
+          input_file(function (data) {
+            wb.add(data, function (err, id) {
+              handleQuota(err, data, id)
             })
           })
         ])
@@ -1669,25 +1753,15 @@ module.exports = function (appname, wb) {
 
 
 
+},{"./util":23,"hscrpt":11,"human-time":12,"hyperfile":13,"hyperprogress":1}],23:[function(require,module,exports){
+//attempt to load node version.
+u = require('./_util')
+if(u.parse) return module.exports = u, console.log("loaded node version for testing")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-},{"hscrpt":11,"human-time":12,"hyperfile":13,"hyperprogress":1}],23:[function(require,module,exports){
 var decoder = new TextDecoder('utf8')
 var encoder = new TextEncoder('utf8')
 var u = exports
+
 u.toUtf8 = function (data) {
   return 'string' == typeof data ? data : decoder.decode(data)
 }
@@ -1731,6 +1805,11 @@ u.HashError = function (_id, id) {
 
 
 
-},{"arraybuffer-base64":6}]},{},[4]);
+
+
+
+
+
+},{"./_util":8,"arraybuffer-base64":6}]},{},[4]);
 </script>
 </html>
