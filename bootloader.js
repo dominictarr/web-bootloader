@@ -140,7 +140,24 @@ module.exports = function (prefix, store, log) {
     version: require('./package.json').version,
     remove: store.rm,
     has: store.has,
-    versions: log.filtered,
+    versions: function (cb) {
+      log.filtered(function (err, ls) {
+        if(err) return cb(err)
+        else if(ls.length) cb(null, ls)
+        else {
+          console.log('restore from legacy log...')
+          var versions = u.parse(appname+'_versions')
+          var n = Object.keys(versions).length
+          for(var ts in versions) {
+            log._append(versions[ts], function () {
+              if(--n) return
+              //try again
+              log.filtered(cb)
+            })
+          }
+        }
+      })
+    },
     history: log.unfiltered,
     current: log.head,
     append: log.append,
@@ -148,5 +165,8 @@ module.exports = function (prefix, store, log) {
     onprogress: null
   }
 }
+
+
+
 
 
