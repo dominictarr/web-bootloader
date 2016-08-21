@@ -218,6 +218,7 @@ module.exports = function (prefix, store, log) {
             if(err) return cb(err)
             var script = document.createElement('script')
             running = true
+            document.body.innerHTML = ''
             script.textContent = u.toUtf8(data)
             document.head.appendChild(script) //run javascript.
             cb()
@@ -1132,7 +1133,7 @@ function hasOwnProperty(obj, prop) {
 module.exports={
   "name": "web-bootloader",
   "description": "",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "homepage": "https://github.com/dominictarr/web-bootloader",
   "repository": {
     "type": "git",
