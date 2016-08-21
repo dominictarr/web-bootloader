@@ -85,6 +85,7 @@ module.exports = function (prefix, store, log) {
             if(err) return cb(err)
             var script = document.createElement('script')
             running = true
+            document.body.innerHTML = ''
             script.textContent = u.toUtf8(data)
             document.head.appendChild(script) //run javascript.
             cb()
