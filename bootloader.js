@@ -149,7 +149,7 @@ module.exports = function (prefix, store, log) {
           var versions = u.parse(localStorage[appname+'_versions'])
           var n = Object.keys(versions).length
           for(var ts in versions) {
-            log._append(versions[ts], function () {
+            log.append(versions[ts], function () {
               if(--n) return
               //try again
               log.filtered(cb)
