@@ -3,7 +3,9 @@ var u = require('./util')
 module.exports = function (prefix, storage) {
   return {
     get: function (id, cb) {
-      var data = storage[prefix+'_versions_'+id]
+      var data = (
+        storage[prefix+'_versions_'+id] || storage[prefix+'_version_'+id]
+      )
       if(data)
         u.hash(data, function (err, _id) {
           if(err) cb(err)
@@ -20,7 +22,6 @@ module.exports = function (prefix, storage) {
         else if(id && _id !== id) cb(u.HashError(_id, id))
         else {
           try {
-
             storage[prefix+'_versions_'+_id] = u.toUtf8(data)
           }
           catch(err) { return cb(err) } //this will be quota error
@@ -30,7 +31,10 @@ module.exports = function (prefix, storage) {
     },
 
     has: function (id, cb) {
-      return cb(null, !!storage[prefix+'_versions_'+id])
+      return cb(null,
+        !!storage[prefix+'_versions_'+id] ||
+        !!storage[prefix+'_version_'+id] //legacy
+      )
     },
 
     rm: function (id, cb) {
@@ -66,6 +70,7 @@ module.exports = function (prefix, storage) {
     }
   }
 }
+
 
 
 
