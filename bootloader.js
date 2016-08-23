@@ -147,6 +147,7 @@ module.exports = function (prefix, store, log) {
         else {
           console.log('restore from legacy log...')
           var versions = u.parse(localStorage[appname+'_versions'])
+          if(!versions) return cb(null, [])
           var n = Object.keys(versions).length
           for(var ts in versions) {
             log.append(versions[ts], function () {
@@ -165,8 +166,4 @@ module.exports = function (prefix, store, log) {
     onprogress: null
   }
 }
-
-
-
-
 
