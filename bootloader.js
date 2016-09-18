@@ -28,8 +28,9 @@ module.exports = function (prefix, store, log) {
       location.reload()
     },
     reinitialize: function (cb) {
-      delete localStorage[appname+'_current']
-      store.destroy(cb)
+      log.destroy(function () {
+        store.destroy(cb)
+      })
     },
     install: function (url, cb) {
       onProgress('installing from:'+url)
@@ -47,7 +48,7 @@ module.exports = function (prefix, store, log) {
         })
       })
     },
-    installAndRun(url, cb) {
+    installAndRun: function (url, cb) {
       wb.install(url, function (err, _, id) {
         if(err) cb(err)
         else wb.run(id, cb)
@@ -55,6 +56,9 @@ module.exports = function (prefix, store, log) {
     },
     add: store.add,
     run: function (id, cb) {
+      if(SecureUrl.isSecureUrl(id))
+        return cb(new Error('use WebBoot.installAndRun, to load a secure url'))
+
       if(!id) return cb(new Error('WebBoot.run: id must be provided'))
       var _id
       //if we are already running, restart
@@ -119,7 +123,17 @@ module.exports = function (prefix, store, log) {
       store.ls(function (err, ls) {
         if(err) return cb(err)
         log.unfiltered(function (err, unfiltered) {
+          if(err) return cb(err)
           var stored = unfiltered.reverse()
+          ls.forEach(function (a) {
+            if(!unfiltered.find(function (b) {
+              return a.id == b.id
+            })) {
+              cleared += a.size
+              remove.push(a.id)
+            }
+          })
+
           for(var i = 0; i < stored.length; i++) {
             var id = stored[i].value
             var item = ls.find(function (e) {
@@ -145,7 +159,6 @@ module.exports = function (prefix, store, log) {
         if(err) return cb(err)
         else if(ls.length) cb(null, ls)
         else {
-          console.log('restore from legacy log...')
           var versions = u.parse(localStorage[appname+'_versions'])
           if(!versions) return cb(null, [])
           var n = Object.keys(versions).length
