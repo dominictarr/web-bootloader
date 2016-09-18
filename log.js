@@ -55,6 +55,10 @@ module.exports = function (prefix, storage) {
         if(err) cb(err)
         else cb(null, filtered(getLog())[0])
       })
+    },
+    destroy: function (cb) {
+      delete storage[prefix]
+      cb()
     }
   }
 }
