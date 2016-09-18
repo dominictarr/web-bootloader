@@ -24,7 +24,7 @@ module.exports = function (prefix, storage) {
           try {
             storage[prefix+'_versions_'+_id] = u.toUtf8(data)
           }
-          catch(err) { return cb(err) } //this will be quota error
+          catch(err) { return cb(err, _id) } //this will be quota error
           cb(null, _id)
         }
       })
@@ -59,7 +59,7 @@ module.exports = function (prefix, storage) {
     },
 
     destroy: function (cb) {
-      var match = new RegExp('^'+prefix+'_versions_')
+      var match = new RegExp('^'+prefix+'_versions?_')
       for(var key in storage) {
         if(match.test(key)) {
           delete storage[key]
@@ -70,19 +70,4 @@ module.exports = function (prefix, storage) {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
