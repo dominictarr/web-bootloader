@@ -161,8 +161,9 @@ module.exports = function (prefix, store, log) {
       location.reload()
     },
     reinitialize: function (cb) {
-      delete localStorage[appname+'_current']
-      store.destroy(cb)
+      log.destroy(function () {
+        store.destroy(cb)
+      })
     },
     install: function (url, cb) {
       onProgress('installing from:'+url)
@@ -180,7 +181,7 @@ module.exports = function (prefix, store, log) {
         })
       })
     },
-    installAndRun(url, cb) {
+    installAndRun: function (url, cb) {
       wb.install(url, function (err, _, id) {
         if(err) cb(err)
         else wb.run(id, cb)
@@ -188,6 +189,9 @@ module.exports = function (prefix, store, log) {
     },
     add: store.add,
     run: function (id, cb) {
+      if(SecureUrl.isSecureUrl(id))
+        return cb(new Error('use WebBoot.installAndRun, to load a secure url'))
+
       if(!id) return cb(new Error('WebBoot.run: id must be provided'))
       var _id
       //if we are already running, restart
@@ -252,7 +256,17 @@ module.exports = function (prefix, store, log) {
       store.ls(function (err, ls) {
         if(err) return cb(err)
         log.unfiltered(function (err, unfiltered) {
+          if(err) return cb(err)
           var stored = unfiltered.reverse()
+          ls.forEach(function (a) {
+            if(!unfiltered.find(function (b) {
+              return a.id == b.id
+            })) {
+              cleared += a.size
+              remove.push(a.id)
+            }
+          })
+
           for(var i = 0; i < stored.length; i++) {
             var id = stored[i].value
             var item = ls.find(function (e) {
@@ -278,7 +292,6 @@ module.exports = function (prefix, store, log) {
         if(err) return cb(err)
         else if(ls.length) cb(null, ls)
         else {
-          console.log('restore from legacy log...')
           var versions = u.parse(localStorage[appname+'_versions'])
           if(!versions) return cb(null, [])
           var n = Object.keys(versions).length
@@ -311,15 +324,15 @@ var u = require('./util')
 //before calling this, always check whether you alread have
 //a file with this hash.
 exports = module.exports = function (url, cb) {
-  var id = exports.isSecureUrl(secure_url)
+  var id = exports.isSecureUrl(url)
   if(!id)
-    return cb(new Error('is not a secure url:'+secure_url))
+    return cb(new Error('is not a secure url:'+url))
 
-  BinaryXHR(secure_url, function (err, data) {
+  BinaryXHR(url, function (err, data) {
     if(err)
       return cb(new Error('could not retrive secure url:'+err))
-    if(!data || !data.length)
-      return cb(new Error('empty response from:  '+secure_url))
+    if(!data || !(data.length || data.byteLength))
+      return cb(new Error('empty response from:  '+url))
     u.hash(data, function (err, _id) {
       if(_id !== id) cb(u.HashError(_id, id))
 
@@ -332,6 +345,7 @@ exports.isSecureUrl = function (string) {
   var h = hasHash.exec(string)
   return isUrl.test(string) && h && h[1]
 }
+
 
 
 
@@ -405,6 +419,10 @@ module.exports = function (prefix, storage) {
         if(err) cb(err)
         else cb(null, filtered(getLog())[0])
       })
+    },
+    destroy: function (cb) {
+      delete storage[prefix]
+      cb()
     }
   }
 }
@@ -1208,7 +1226,7 @@ module.exports = function (prefix, storage) {
           try {
             storage[prefix+'_versions_'+_id] = u.toUtf8(data)
           }
-          catch(err) { return cb(err) } //this will be quota error
+          catch(err) { return cb(err, _id) } //this will be quota error
           cb(null, _id)
         }
       })
@@ -1243,7 +1261,7 @@ module.exports = function (prefix, storage) {
     },
 
     destroy: function (cb) {
-      var match = new RegExp('^'+prefix+'_versions_')
+      var match = new RegExp('^'+prefix+'_versions?_')
       for(var key in storage) {
         if(match.test(key)) {
           delete storage[key]
@@ -1256,31 +1274,13 @@ module.exports = function (prefix, storage) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 },{"./util":20}],19:[function(require,module,exports){
 var h = require('hscrpt')
 var input_file = require('hyperfile')
 var Progress = require('hyperprogress')
 var u = require('./util')
 var prog = Progress()
-
-//split the hash.
-var parts = window.location.hash.split('#').slice(1)
-var QUOTA = 5*1024*1024
+var SecureUrl = require('./fetch')
 
 var human = require('human-time')
 
@@ -1302,110 +1302,122 @@ module.exports = function (appname, wb) {
     return (Math.round((bytes / 1024) * 100)/100) + 'k'
   }
 
-//  var isElectron = typeof process !== 'undefined'
-//      && process.env && process.env[appname+'_INIT']
+  function logFail(err) {
+    if(err) throw prog.fail(err)
+  }
 
   function handleQuota(err, data, id) {
     if(err
-      && err.name == "QuotaExceededError"
+      && /quota/i.test(err.name)
       && confirm ('adding: '+id+' exceedes quota, clear cache?')
     ) {
-      wb.prune(data.length, function (err) {
+      wb.prune(data.length || data.byteLength || 0, function (err) {
         if(err) throw prog.fail(err)
         wb.add(data, id, function (err) {
           if(err) throw prog.fail(err)
-          wb.run(id, function (err) {
-            if(err) throw prog.fail(err)
-          })
+          wb.run(id, logFail)
         })
       })
     }
-    else if(!err) wb.run(id, function (err) {
-        if(err) throw prog.fail(err)
-      })
+    else if(!err) wb.run(id, logFail)
     else
       throw prog.fail(err)
   }
 
+  function clearHash (err) {
+    if(err) throw prog.fail(err)
+    else location.hash = location.hash.split('#').splice(2).join('#')
+  }
+
   ;(function redraw () {
+    //okay, check if the hash has a secure url in it first.
+    var url = location.hash.split('#').splice(1).shift()
+    var id = SecureUrl.isSecureUrl(url)
+    if(!id) url = null
     wb.versions(function (err, log) {
       if(err) throw prog.fail(err)
       document.body.innerHTML = ''
-      if(log.length && !wb.isInit())
-        return wb.run(log[0].value, function (err) {
-          if(err) throw prog.fail(err)
-        })
-
-      document.body.appendChild(
-        h('div', {classList: 'WebBoot'}, [
-          ( !log.length
-          ? h('h2', 'please enter secure-url or select file to run')
-          : h('ol', {classList: 'WebBoot__recent'}, log.map(function (v) {
-              return h('li', [
-                h('code', [v.value]),
-                h('label',
-                  { title: new Date(v.ts).toString() },
-                  [ ' (loaded ', human(new Date(v.ts)), ') ']
-                ),
-                h('div', [
-                  btn('run', function () {
-                    wb.run(v.value)
-                  }),
-                  btn('revert', function () {
-                    wb.revert(v.ts, function (err) {
-                      if(err) throw prog.fail(err)
-                      redraw()
+      //if we have a version ready, and there is no url provided, run it.
+      if(!wb.isInit()) {
+        //if there is no logged versions, run the url version
+        if(id && !log.length) {
+          wb.installAndRun(url, clearHash)
+        }
+        //if there is no url, run the log version
+        else if(log.length && !id)
+          wb.run(log[0].value, logFail)
+        //prompt if they want to upgrade to new url version.
+        else if(id && log.length) {
+          //if the url is the same as we would have run,
+          //then just run it.
+          if(log[0].value === id)
+            wb.run(log[0].value, clearHash)
+          else if(confirm('change version to:'+url))
+            wb.installAndRun(url, clearHash)
+          else
+            wb.run(log[0].value, logFail)
+        }
+      }
+      else
+        document.body.appendChild(
+          h('div', {classList: 'WebBoot'}, [
+            ( !log.length
+            ? h('h2', 'please enter secure-url or select file to run')
+            : h('ol', {classList: 'WebBoot__recent'}, log.map(function (v) {
+                return h('li', [
+                  h('code', [v.value]),
+                  h('label',
+                    { title: new Date(v.ts).toString() },
+                    [ ' (loaded ', human(new Date(v.ts)), ') ']
+                  ),
+                  h('div', [
+                    btn('run', function () {
+                      wb.run(v.value)
+                    }),
+                    btn('revert', function () {
+                      wb.revert(v.ts, function (err) {
+                        if(err) throw prog.fail(err)
+                        redraw()
+                      })
                     })
-                  })
+                  ])
                 ])
-              ])
-            }))
-          ),
+              }))
+            ),
 
-          //paste a secure url into this text input
-          h('input', {
-            placeholder: 'enter secure url',
-            onchange: function (ev) {
-              //else, download it. if that succeeds,
-              //add to store, if success, run.
-              //if that fails, offer to clean up, or fail.
-              //add to store, if success, run.
+            //paste a secure url into this text input
+            h('input', {
+              placeholder: 'enter secure url',
+              onchange: function (ev) {
+                //else, download it. if that succeeds,
+                //add to store, if success, run.
+                //if that fails, offer to clean up, or fail.
+                //add to store, if success, run.
 
-              //this can fail from quota exceeded.
-              //check whether we have this already, if so, run it.
-              var url = ev.target.value
+                //this can fail from quota exceeded.
+                //check whether we have this already, if so, run it.
+                var url = ev.target.value
 
-              wb.install(url, handleQuota)
-            }
-          }),
+                wb.install(url, handleQuota)
+              }
+            }),
 
-          //or select a local file to run
-          input_file(function (data) {
-            wb.add(data, function (err, id) {
-              handleQuota(err, data, id)
+            //or select a local file to run
+            input_file(function (data) {
+              wb.add(data, function (err, id) {
+                if(err) console.log(err.name)
+                handleQuota(err, data, id)
+              })
             })
-          })
-        ])
-      )
+          ])
+        )
     })
   })()
 
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-},{"./util":20,"hscrpt":11,"human-time":12,"hyperfile":1,"hyperprogress":3}],20:[function(require,module,exports){
+},{"./fetch":5,"./util":20,"hscrpt":11,"human-time":12,"hyperfile":1,"hyperprogress":3}],20:[function(require,module,exports){
 //attempt to load node version.
 u = require('./_util')
 if(u.parse) return module.exports = u, console.log("loaded node version for testing")
