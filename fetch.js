@@ -7,15 +7,15 @@ var u = require('./util')
 //before calling this, always check whether you alread have
 //a file with this hash.
 exports = module.exports = function (url, cb) {
-  var id = exports.isSecureUrl(secure_url)
+  var id = exports.isSecureUrl(url)
   if(!id)
-    return cb(new Error('is not a secure url:'+secure_url))
+    return cb(new Error('is not a secure url:'+url))
 
-  BinaryXHR(secure_url, function (err, data) {
+  BinaryXHR(url, function (err, data) {
     if(err)
       return cb(new Error('could not retrive secure url:'+err))
-    if(!data || !data.length)
-      return cb(new Error('empty response from:  '+secure_url))
+    if(!data || !(data.length || data.byteLength))
+      return cb(new Error('empty response from:  '+url))
     u.hash(data, function (err, _id) {
       if(_id !== id) cb(u.HashError(_id, id))
 
@@ -28,5 +28,6 @@ exports.isSecureUrl = function (string) {
   var h = hasHash.exec(string)
   return isUrl.test(string) && h && h[1]
 }
+
 
 
